@@ -1,26 +1,12 @@
-# ==============================================================================
-# BÀI TẬP 07: CỔNG GIAO TIẾP NGINX TOÀN DIỆN CHO MICROSERVICES
-# Chuỗi câu lệnh thực hiện trên VPS Ubuntu 24.04
-# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# BƯỚC 1: KHỞI CHẠY 2 BACKEND GIẢ LẬP (DOCKER)
-# ------------------------------------------------------------------------------
-# Lưu ý quan trọng: Dùng 127.0.0.1:8081:80 để chỉ mở port cho localhost (chính Nginx gọi),
 # ngăn chặn việc Docker tự động bypass UFW để mở port ra ngoài Internet.
 docker run -d -p 127.0.0.1:8081:80 --name user_api nginx
 docker run -d -p 127.0.0.1:8082:80 --name product_api nginx
 
-# Tạo nội dung khác biệt cho 2 container để dễ phân biệt khi test:
 docker exec -i user_api sh -c "echo '<h1>[User Service]: Day la API quan ly User (Port 8081)</h1>' > /usr/share/nginx/html/index.html"
 docker exec -i product_api sh -c "echo '<h1>[Product Service]: Day la API quan ly San Pham (Port 8082)</h1>' > /usr/share/nginx/html/index.html"
 
-# Kiểm tra trạng thái 2 container:
 docker ps
 
-# ------------------------------------------------------------------------------
-# BƯỚC 2: CẤU HÌNH UFW FIREWALL
-# ------------------------------------------------------------------------------
 # 1. Luôn cho phép SSH trước khi bật firewall để tránh bị mất quyền truy cập VPS:
 sudo ufw allow 22/tcp
 
@@ -38,31 +24,19 @@ sudo ufw enable
 # 5. Kiểm tra lại trạng thái UFW:
 sudo ufw status verbose
 
-# ------------------------------------------------------------------------------
-# BƯỚC 3: CÀI ĐẶT VÀ CẤU HÌNH NGINX GATEWAY
-# ------------------------------------------------------------------------------
 # Cập nhật repository và cài đặt Nginx:
 sudo apt update
 sudo apt install nginx -y
 
 # Tạo file cấu hình gateway:
 sudo nano /etc/nginx/sites-available/gateway
-# (Dán nội dung cấu hình từ file cau_hinh_nginx.txt vào)
 
-# ------------------------------------------------------------------------------
-# BƯỚC 4: TẠO TRANG LỖI 404 TÙY CHỈNH
-# ------------------------------------------------------------------------------
 # Tạo file custom_404.html theo đường dẫn cấu hình:
 sudo nano /usr/share/nginx/html/custom_404.html
-# (Dán nội dung từ file custom_404.html hoặc câu lệnh echo dưới đây):
 # echo '<h1>API khong ton tai!</h1>' | sudo tee /usr/share/nginx/html/custom_404.html
 
 # Phân quyền cho file:
 sudo chmod 644 /usr/share/nginx/html/custom_404.html
-
-# ------------------------------------------------------------------------------
-# BƯỚC 5: KÍCH HOẠT VÀ KIỂM TRA
-# ------------------------------------------------------------------------------
 # Tạo symlink kích hoạt Virtual Host:
 sudo ln -sf /etc/nginx/sites-available/gateway /etc/nginx/sites-enabled/
 
@@ -75,22 +49,15 @@ sudo nginx -t
 # Nạp lại cấu hình (Graceful reload không làm gián đoạn kết nối):
 sudo systemctl reload nginx
 
-# ------------------------------------------------------------------------------
-# BƯỚC 6: KIỂM THỬ KẾT QUẢ (TESTING)
-# ------------------------------------------------------------------------------
 # 1. Test User API thông qua Nginx Gateway:
 curl http://localhost/user/
-# Kết quả mong đợi: Hiển thị nội dung User Service
 
 # 2. Test Product API thông qua Nginx Gateway:
 curl http://localhost/product/
-# Kết quả mong đợi: Hiển thị nội dung Product Service
 
 # 3. Test URL không tồn tại:
 curl -i http://localhost/api-sai
-# Kết quả mong đợi: Mã HTTP 404 Not Found kèm nội dung trang custom_404.html
 
 # 4. Test từ máy cá nhân truy cập trực tiếp port 8081 và 8082:
 # curl http://<IP_VPS>:8081/
 # curl http://<IP_VPS>:8082/
-# Kết quả mong đợi: Kết nối bị từ chối hoặc timeout (bảo vệ an toàn cho Microservices)

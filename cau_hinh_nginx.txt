@@ -1,64 +1,31 @@
-# ==============================================================================
-# CẤU HÌNH NGINX API GATEWAY CHO MICROSERVICES
-# Đường dẫn trên VPS Ubuntu: /etc/nginx/sites-available/gateway
-# ==============================================================================
-
 server {
     listen 80;
     server_name localhost; # Thay bằng IP VPS hoặc Domain của bạn (ví dụ: api.my-domain.com)
-
-    # Bật chặn lỗi từ backend để Nginx tự động phục vụ trang custom_404.html
     proxy_intercept_errors on;
-
-    # --------------------------------------------------------------------------
-    # 1. Định tuyến Microservice 1: User API (chạy ở cổng 8081)
-    # Ví dụ: http://<IP>/user/profile -> forward sang http://127.0.0.1:8081/profile
-    # --------------------------------------------------------------------------
     location /user/ {
-        # Có dấu / ở cuối URL: Nginx sẽ bóc bỏ tiền tố "/user/" trước khi gửi tới backend
         proxy_pass http://127.0.0.1:8081/;
-
-        # Chuyển tiếp các thông tin định danh của client đến backend
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-
-        # Thiết lập thời gian timeout tránh treo kết nối
         proxy_connect_timeout 60s;
         proxy_read_timeout 60s;
         proxy_send_timeout 60s;
     }
-
-    # --------------------------------------------------------------------------
-    # 2. Định tuyến Microservice 2: Product API (chạy ở cổng 8082)
-    # Ví dụ: http://<IP>/product/list -> forward sang http://127.0.0.1:8082/list
-    # --------------------------------------------------------------------------
     location /product/ {
-        # Có dấu / ở cuối URL: Nginx sẽ bóc bỏ tiền tố "/product/" trước khi gửi tới backend
         proxy_pass http://127.0.0.1:8082/;
-
-        # Chuyển tiếp các thông tin định danh của client đến backend
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-
-        # Thiết lập thời gian timeout tránh treo kết nối
         proxy_connect_timeout 60s;
         proxy_read_timeout 60s;
         proxy_send_timeout 60s;
     }
-
-    # --------------------------------------------------------------------------
-    # 3. Cấu hình Custom Error Page 404
-    # --------------------------------------------------------------------------
     error_page 404 /custom_404.html;
 
     location = /custom_404.html {
         root /usr/share/nginx/html;
-        # internal: Đảm bảo trang này chỉ được Nginx gọi nội bộ khi có lỗi,
-        # ngăn chặn người dùng từ ngoài gõ trực tiếp URL /custom_404.html (trả 404 luôn nếu gõ thẳng)
         internal;
     }
 }

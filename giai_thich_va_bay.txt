@@ -1,9 +1,3 @@
-================================================================================
-GIẢI THÍCH CHI TIẾT KIẾN TRÚC & CÁC "BẪY" QUAN TRỌNG TRONG BÀI TẬP 07
-================================================================================
-
-1. BẢN CHẤT KIẾN TRÚC API GATEWAY VỚI NGINX
---------------------------------------------------------------------------------
 - Trong kiến trúc Microservices, các dịch vụ con (User, Product, Order, v.v.)
   thường chạy độc lập trên các cổng khác nhau (8081, 8082,...).
 - Nếu để người dùng gọi trực tiếp tới các cổng này:
@@ -13,64 +7,42 @@ GIẢI THÍCH CHI TIẾT KIẾN TRÚC & CÁC "BẪY" QUAN TRỌNG TRONG BÀI T�
 - Nginx đóng vai trò API Gateway (Cổng giao tiếp tập trung):
   + Là điểm đón (Single Point of Entry) duy nhất tại cổng chuẩn 80/443.
   + Dựa vào URI (Path-based Routing) như `/user/` hoặc `/product/` để điều phối request về đúng dịch vụ backend.
-
---------------------------------------------------------------------------------
-2. CÁC "BẪY" KỸ THUẬT QUAN TRỌNG CẦN LƯU Ý
---------------------------------------------------------------------------------
-
-★ BẪY 1: DOCKER BỎ QUA (BYPASS) UFW FIREWALL
-- Hiện tượng:
-  Khi bạn chạy lệnh:
-      docker run -d -p 8081:80 --name user_api nginx
-  sau đó chạy:
-      sudo ufw deny 8081
-  Bạn sẽ phát hiện từ máy cá nhân bên ngoài Internet VẪN TRUY CẬP ĐƯỢC vào cổng 8081!
-- Nguyên nhân:
+## Bẫy:
+Docker bỏ qua UFW FIREWALL
   Docker tự động can thiệp trực tiếp vào iptables của Linux. Nó tạo các quy tắc
   trong chuỗi PREROUTING và bảng NAT (DOCKER chain). Các gói tin đến cổng 8081
   từ card mạng ngoài (eth0) được chuyển tiếp thẳng vào container TRƯỚC KHI
   chuỗi INPUT của UFW được duyệt qua. Vì vậy, lệnh `ufw deny 8081` bị bỏ qua hoàn toàn.
-- Giải pháp chuẩn DevOps:
+- Giải pháp:
   Khi publish cổng container, chỉ liên kết với địa chỉ loopback nội bộ:
       docker run -d -p 127.0.0.1:8081:80 --name user_api nginx
       docker run -d -p 127.0.0.1:8082:80 --name product_api nginx
   Khi đó container chỉ lắng nghe trên giao diện mạng 127.0.0.1 (chỉ Nginx cùng host
   mới gọi được), bất kỳ ai từ bên ngoài Internet đều không thể kết nối tới cổng này.
 
-★ BẪY 2: DẤU GẠCH CHÉO "/" Ở CUỐI PROXY_PASS
+Bẫy dấu / ở cuối proxy_pass
 - Cấu hình 1 (CÓ dấu gạch chéo ở cuối):
       location /user/ {
           proxy_pass http://127.0.0.1:8081/;
       }
-  -> Nginx sẽ CẮT BỎ tiền tố "/user/" trước khi gửi sang backend.
-  Ví dụ: Client gọi `GET /user/profile` -> Backend nhận được `GET /profile`.
-  Đây là hành vi thường dùng trong Microservices vì backend service thường chỉ
-  định nghĩa các route nội bộ của nó mà không cần biết tiền tố `/user/`.
+  -> Nginx sẽ bỏ tiền tố "/user/" trước khi gửi sang backend.
 
 - Cấu hình 2 (KHÔNG CÓ dấu gạch chéo ở cuối):
       location /user/ {
           proxy_pass http://127.0.0.1:8081;
       }
   -> Nginx GIỮ NGUYÊN toàn bộ đường dẫn URI ban đầu.
-  Ví dụ: Client gọi `GET /user/profile` -> Backend nhận được `GET /user/profile`.
-  Nếu backend của bạn không khai báo tiền tố `/user/profile` trong router thì sẽ bị lỗi 404 từ backend.
 
-★ BẪY 3: TẠI SAO PHẢI CÓ "proxy_intercept_errors on;"?
-- Mặc định, nếu client gọi một URL không tồn tại tại Nginx (ví dụ: `http://<IP>/sai-duong-dan`),
-  Nginx tự phát hiện 404 và hiển thị `custom_404.html`.
-- Nhưng nếu client gọi tới route hợp lệ qua gateway, sau đó backend trả về HTTP 404
-  (ví dụ: `http://<IP>/user/not-found-id`), Nginx mặc định sẽ chuyển tiếp nguyên văn trang 404
-  của backend (thường là trang mặc định hoặc thông báo JSON thô của backend) cho người dùng.
+Bẫy: tại sao phải có "proxy_intercept_errors on;"?
+- Mặc định, nếu client gọi một URL không tồn tại tại Nginx, Nginx tự phát hiện 404 và hiển thị `custom_404.html`.
+- Nhưng nếu client gọi tới route hợp lệ qua gateway, sau đó backend trả về HTTP 404, Nginx mặc định sẽ chuyển tiếp nguyên văn trang 404
+  của backend cho người dùng.
 - Thêm chỉ thị `proxy_intercept_errors on;` giúp Nginx "bắt" toàn bộ mã lỗi >= 300 từ backend
   để hiển thị thống nhất trang `custom_404.html` mà bạn đã tùy biến.
 
-★ BẪY 4: CHỈ THỊ "internal;" TRONG LOCATION LỖI
+bẫy: chỉ thị "internal;" trong location lỗi
 - Trong block cấu hình:
       location = /custom_404.html {
           root /usr/share/nginx/html;
           internal;
       }
-- Từ khóa `internal;` có vai trò cực kỳ quan trọng:
-  Nó chỉ cho phép Nginx gọi file này trong các hoạt động nội bộ (như xử lý error_page hoặc rewrite).
-  Người dùng bên ngoài nếu tự ý gõ `http://<IP>/custom_404.html` trên trình duyệt sẽ
-  bị từ chối (trả về 404), ngăn chặn việc lộ tài nguyên hoặc bị lợi dụng thông tin.
